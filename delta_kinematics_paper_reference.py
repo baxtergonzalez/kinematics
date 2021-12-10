@@ -23,7 +23,10 @@ ax.set_zlabel('Z coord')
 def makeVect(input, cyl=False):
     """
     -takes in input either with x y an z for cartesian input or length, thetaXY, and deltaZ if cylingrical
+        -input determines whether or not the vector is calculated as a cartesian or cylindrical
     -outputs a numpy array in cartesian form for 3D vector
+    -if cartesian, straight up just turn array into numpy array
+        -can possibly take a numpy array? unclear tbh, i am too lazy to test
     """
     if not cyl:
         x=input[0]
@@ -46,16 +49,20 @@ def makeVect(input, cyl=False):
 def rotationMatrix(rAng):
     '''
     -takes in euler angles, spit out rotation matrix
-
+    -angle input is in degrees
     '''
     r = R.from_euler('xyz', rAng, degrees = True)
     rotation =np.array(r.as_matrix())
     return rotation
 
 def drawVector(start, end, col='b'):
+    '''
+    -displays the vector from a starting point to ending point
+    -default color is blue
+    '''
     ax.quiver(start[0], start[1], start[2], end[0], end[1], end[2], color=col)
 
-def drawSphere(origin, radius):
+def drawSphere(origin, radius, draw = False):
     """
     -draw a sphere around input position of radius cLength + dLength(linkage + platform length)
     -represents all possible positions of platform
@@ -65,7 +72,8 @@ def drawSphere(origin, radius):
     x = radius* np.cos(u)*np.sin(v) + origin[0]
     y = radius* np.sin(u)*np.sin(v)+ origin[1]
     z = radius* np.cos(v)+ origin[2]
-    ax.plot_wireframe(x, y, z, color="r")
+    if draw:
+        ax.plot_wireframe(x, y, z, color="r")
 
     coords = np.array([x,y,z])
     return coords
@@ -88,8 +96,26 @@ def drawCircle(origin, radius, phi, bMin = 0, bMax = 2*np.pi):
     return coords
 
 def findClosestMatch(set1, set2):
+    """
+    -feed in two sets of coordinates
+        -all points on surface of a sphere and arc input
+    -calculate absolute distance between the coordinates in question
+    -makes a list of these distances
+    -find the minimum value from this list 
+    -find the coordinates that yielded the smallest distance
+    
+    -once these 4 coords are found, generate points on a segment bound by the points
+    -increase step size of draw sphere function to increase resolution
+    -find distance for theese new points as well
+    -stop rendering the rest of the section
+    -find the segment of sphere bound by these new points
+    -increase step size in the segment
+    -repeat until distance between point reaches some minimum threshold
+
+    """
     closestSet = 0,0,0
     return closestSet
+
 # position vector is the input position vector of the center of end effector
 # rotation is the rotation matrix for the orientation of the end effector (input in degrees)
 # origin is constant. always (0,0,0)
@@ -123,8 +149,10 @@ drawVector(position, d1, 'g')
 drawVector(position, d2, 'g')
 drawVector(position, d3, 'g')
 
-drawSphere(position, cLength+dLength)
-print(drawSphere(position, cLength+dLength))
+print(drawSphere(position+d1, cLength, draw=True))
+print(drawSphere(position+d2, cLength))
+print(drawSphere(position+d3, cLength))
+
 drawCircle(a1, bLength, 0, np.pi/4, 3*np.pi/4)
 drawCircle(a2, bLength, 2*np.pi/3,  np.pi/4, 3*np.pi/4)
 drawCircle(a3, bLength, 2*np.pi/-3,  np.pi/4, 3*np.pi/4)
