@@ -8,6 +8,44 @@ from numpy.core.shape_base import vstack
 from scipy.spatial.transform import Rotation as R
 
 
+
+'''
+
+
+
+
+
+position = makeVect([0,5,20])
+baseRots = [0, 2*np.pi/3, -2*np.pi/3]
+
+aVecs = np.array((3,3))
+dVecs = np.array((3,3))
+for i in range(3):
+    aVecs[i,:] = makeVect(...)
+    dVecs[i,:] = makeVect(...)
+bLength, cLength = ...
+
+
+def findThetas(aVecs, dVecs, position, baseRots):
+    thetas = np.array(aVecs.shape[0])
+    for i in range(aVecs.shape[0]):
+        aVec = rotate(aVecs[i,:], -baseRots[i])
+        dVec = rotate(dVecs[i,:], -baseRots[i])
+        pVec = rotate(position, -baseRots[i])
+        deltaVec = dVecs+pVec-aVecs
+        r2 = np.dot(deltaVec, deltaVec) - cLength**2
+        a = deltaVec[0]*deltaVec[0] + deltaVec[2]*deltaVec[2]
+        b = -r2*deltaVec[0]
+        c = 0.25*r2 - deltaVec[2]*deltaVec[2]*bLength*bLength
+        bx = [-b+sqrt(b**2-a*c)]/(2*a)
+        thetas[i] = acos(bx/bLength)
+    return thetas
+
+
+
+
+'''
+
 #setup for the plotting functions
 
 fig = plt.figure()
@@ -47,6 +85,14 @@ def makeVect(input, cyl=False):
         vector = np.array([dx,dy,dz])
     return vector
 
+def makeLinkage(length, baseRots, deltaZ=0):
+    quant = baseRots.shape[0]
+    links = np.empty((quant,3))
+    for i in range(quant):
+        input = np.array([length, baseRots[i], deltaZ])
+        links[i,:] = makeVect(input, cyl = True)
+    return links
+
 def rotationMatrix(rAng):
     '''
     -takes in euler angles, spit out rotation matrix
@@ -63,6 +109,10 @@ def drawVector(start, end, col='b'):
     '''
     ax.quiver(start[0], start[1], start[2], end[0], end[1], end[2], color=col)
 
+def drawVects(starts, ends, cols = 'b'):
+    for i in range(starts.shape[0]):
+        ax.quiver(starts[i,0], starts[i, 1], starts[i, 2], ends[i, 0], ends[i, 1], ends[i, 2], color=cols)
+    
 def drawSphere(origin, radius, draw = False, col = 'r'):
     """
     -draw a sphere around input position of radius cLength + dLength(linkage + platform length)
@@ -179,25 +229,23 @@ bLength = 10
 # a vectors are first grounded linkage from origin
 
 aLength = 15
-a1 = makeVect([aLength, 0, 0], cyl = True)
-a2 = makeVect([aLength, (360/3)*1, 0], cyl = True)
-a3 = makeVect([aLength, (360/3)*-1, 0], cyl = True)
+aLinks = makeLinkage(aLength, np.array([0, (360/3)*1, (360/3)*-1 ]))
+a1 = aLinks[0]
+a2 = aLinks[1]
+a3 = aLinks[2]
 
 # d vectors are platform vectors going from position to connect to legs
 
 dLength = 5
-d1 = np.dot(makeVect([dLength, 0, 0], cyl = True), rotation)
-d2 = np.dot(makeVect([dLength, (360/3)*1, 0], cyl = True), rotation)
-d3 = np.dot(makeVect([dLength, (360/3)*-1, 0], cyl = True), rotation)
+dLinks = makeLinkage(dLength, np.array([0,360/3,-360/3]))
+d1 = np.dot(dLinks[0], rotation)
+d2 = np.dot(dLinks[1], rotation)
+d3 = np.dot(dLinks[2], rotation)
 
 # draw static design vectors a 1-3 and d 1-3
-drawVector(origin, a1)
-drawVector(origin, a2)
-drawVector(origin, a3)
+drawVects(np.full((3,3),origin),np.array([a1, a2, a3]) )
 
-drawVector(position, d1, 'g')
-drawVector(position, d2, 'g')
-drawVector(position, d3, 'g')
+drawVects(np.full((3,3),position), np.array([d1,d2,d3]), cols = 'g')
 
 arc1 = drawCircle(a1, bLength, 0, np.pi/4, 3*np.pi/4, draw = True)
 arc2 = drawCircle(a2, bLength, 2*np.pi/3,  np.pi/4, 3*np.pi/4, draw = True)
@@ -205,15 +253,11 @@ arc3 = drawCircle(a3, bLength,  2*np.pi/-3, np.pi/4, 3*np.pi/4, draw = True)
 
 #draw vectors b 1-3, the vectors that 
 b1 = findIntersectionPoint(arc1, position+d1,cLength, tolerance = 300) - a1
-drawVector(a1, b1)
 b2 = findIntersectionPoint(arc2, position+d2, cLength, tolerance = 300)-a2
-drawVector(a2, b2)
 b3 = findIntersectionPoint(arc3, position+d3, cLength, tolerance = 300)-a3
-drawVector(a3, b3)
+drawVects(np.array([a1,a2,a3]),np.array([b1,b2,b3]))
 
-drawVector(b1+a1, position+d1-a1-b1, col = 'r')
-drawVector(b2+a2, position+d2-a2-b2, col = 'r')
-drawVector(b3+a3, position+d3-a3-b3, col = 'r')
+drawVects(np.array([b1+a1,b2+a2,b3+a3]),np.array([position+d1-a1-b1, position+d2-a2-b2,position+d3-a3-b3]), cols = 'r')
 
 # display plot
 # !!ALWAYS AT END OF SCRIPT!!
