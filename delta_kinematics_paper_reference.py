@@ -4,6 +4,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import *
+from numpy.core.shape_base import vstack
 from scipy.spatial.transform import Rotation as R
 
 
@@ -62,7 +63,7 @@ def drawVector(start, end, col='b'):
     '''
     ax.quiver(start[0], start[1], start[2], end[0], end[1], end[2], color=col)
 
-def drawSphere(origin, radius, draw = False):
+def drawSphere(origin, radius, draw = False, col = 'r'):
     """
     -draw a sphere around input position of radius cLength + dLength(linkage + platform length)
     -represents all possible positions of platform
@@ -73,58 +74,71 @@ def drawSphere(origin, radius, draw = False):
     y = radius* np.sin(u)*np.sin(v)+ origin[1]
     z = radius* np.cos(v)+ origin[2]
     if draw:
-        ax.plot_wireframe(x, y, z, color="r")
+        ax.plot_wireframe(x, y, z, color=col)
 
     coords = np.array([x,y,z])
     return coords
 
-def drawCircle(origin, radius, phi, bMin = 0, bMax = 2*np.pi):
+def drawCircle(origin, radius, phi, bMin = 0, bMax = 2*np.pi, resolution = 50, draw = False):
     """
     -draw a circle of radius bLength centered at the start of the b joint
     -the circle is constrained to be co-planer with the b linkage
     -this circle represents all of the possible positions for b
     -can also restrict the circle into a segment to represent the range of motors
     """
-    theta = np.linspace(bMin, bMax, 201)
-    x = radius*np.cos(theta)*np.cos(phi) + origin[0]
-    y = radius*np.cos(theta)*np.sin(phi) + origin[1]
-    z = radius*np.sin(theta) + origin[2]
- 
-    ax.plot(x,y,z)
-
-    coords = np.array([x,y,z])
+    
+    theta = np.linspace(bMin, bMax, resolution)
+    x = np.array(radius*np.cos(theta)*np.cos(phi) + origin[0])
+    y = np.array(radius*np.cos(theta)*np.sin(phi) + origin[1])
+    z = np.array(radius*np.sin(theta) + origin[2])
+    if draw:
+        ax.plot(x,y,z)
+    coords = vstack(np.meshgrid(x,y,z)).reshape(3,-1).T
+    #coords = np.meshgrid(x,y,z)
+    
     return coords
 
-def findClosestMatch(set1, set2):
+def findDistance3D(point1, point2):
+    """ 
+    -returns the distance between two provided coordinates in 3D cartesian space
     """
-    -feed in two sets of coordinates
-        -all points on surface of a sphere and arc input
-    -calculate absolute distance between the coordinates in question
-    -makes a list of these distances
-    -find the minimum value from this list 
-    -find the coordinates that yielded the smallest distance
-    
-    -once these 4 coords are found, generate points on a segment bound by the points
-    -increase step size of draw sphere function to increase resolution
-    -find distance for theese new points as well
-    -stop rendering the rest of the section
-    -find the segment of sphere bound by these new points
-    -increase step size in the segment
-    -repeat until distance between point reaches some minimum threshold
+    distance = np.sqrt(((point1[0]-point2[0])**2)+((point1[1]-point2[1])**2)+((point1[2]-point2[2])**2)) 
+    return distance
 
+def findIntersectionPoint(bLineSet, origin, radius, tolerance = 30, draw = True):
     """
-    closestSet = 0,0,0
-    return closestSet
+    -(blineSet): provide set of points to compare
+    -(origin/radius): provide origin of a sphere as well as it's radius
+    -(tolerance): provide a minimum tolerance that your points must be within from the surface of the sphere
+    
+    This function checks the distance of all of the points of a set from the center of a sphere.
+    
+    The goal is to return the point, if there is one, within the set of points provided that intersects with 
+    the surface of a sphere
+        If the distance from the center is less than the radius, it is not on the surface
+        If the distance from the center is greater than the radius, it is not on the surface
+    
+    """
+    threshold = radius/tolerance
+           
+    for point in bLineSet:
+        if (findDistance3D(point,origin)-radius)<threshold:
+            intersectionPoint = point
+            if draw:
+                drawSphere(intersectionPoint, 1, col='b')
+            return intersectionPoint
+        else:
+            intersectionPoint = np.array([0,0,0])
 
 # position vector is the input position vector of the center of end effector
 # rotation is the rotation matrix for the orientation of the end effector (input in degrees)
 # origin is constant. always (0,0,0)
 
-position = makeVect([0,0,20])
+position = makeVect([5,10,25])
 rotation = rotationMatrix([0,0,0])
 origin = makeVect([0,0,0])
-cLength = 10
-bLength = 15
+cLength = 25
+bLength = 10
 
 # a vectors are first grounded linkage from origin
 
@@ -149,13 +163,18 @@ drawVector(position, d1, 'g')
 drawVector(position, d2, 'g')
 drawVector(position, d3, 'g')
 
-print(drawSphere(position+d1, cLength, draw=True))
-print(drawSphere(position+d2, cLength))
-print(drawSphere(position+d3, cLength))
 
-drawCircle(a1, bLength, 0, np.pi/4, 3*np.pi/4)
-drawCircle(a2, bLength, 2*np.pi/3,  np.pi/4, 3*np.pi/4)
-drawCircle(a3, bLength, 2*np.pi/-3,  np.pi/4, 3*np.pi/4)
+#draw vectors b 1-3, the vectors that 
+b1 = findIntersectionPoint(drawCircle(a1, bLength, 0, np.pi/4, 3*np.pi/4, draw = True), position+d1,cLength, tolerance = 300) - a1
+drawVector(a1, b1)
+b2 = findIntersectionPoint(drawCircle(a2, bLength, 2*np.pi/3,  np.pi/4, 3*np.pi/4, draw = True), position+d2, cLength, tolerance = 300)-a2
+drawVector(a2, b2)
+b3 = findIntersectionPoint(drawCircle(a3, bLength,  2*np.pi/-3, np.pi/4, 3*np.pi/4, draw = True), position+d3, cLength, tolerance = 300)-a3
+drawVector(a3, b3)
+
+drawVector(b1+a1, position+d1-a1-b1, col = 'r')
+drawVector(b2+a2, position+d2-a2-b2, col = 'r')
+drawVector(b3+a3, position+d3-a3-b3, col = 'r')
 
 # display plot
 # !!ALWAYS AT END OF SCRIPT!!
