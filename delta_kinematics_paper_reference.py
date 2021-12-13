@@ -58,7 +58,7 @@ def rotationMatrix(rAng):
 
 def drawVector(start, end, col='b'):
     '''
-    -displays the vector from a starting point to ending point
+    -displays the vector originating at starting point, plus the vector 'end'
     -default color is blue
     '''
     ax.quiver(start[0], start[1], start[2], end[0], end[1], end[2], color=col)
@@ -88,53 +88,89 @@ def drawCircle(origin, radius, phi, bMin = 0, bMax = 2*np.pi, resolution = 50, d
     """
     
     theta = np.linspace(bMin, bMax, resolution)
+    # coords = np.zeros((len(theta),3))
     x = np.array(radius*np.cos(theta)*np.cos(phi) + origin[0])
     y = np.array(radius*np.cos(theta)*np.sin(phi) + origin[1])
     z = np.array(radius*np.sin(theta) + origin[2])
+
     if draw:
         ax.plot(x,y,z)
-    coords = vstack(np.meshgrid(x,y,z)).reshape(3,-1).T
-    #coords = np.meshgrid(x,y,z)
     
+    coords = np.array([x,y,z]).T
     return coords
 
-def findDistance3D(point1, point2):
-    """ 
-    -returns the distance between two provided coordinates in 3D cartesian space
+def findSquareDistance(point1, point2):
     """
-    distance = np.sqrt(((point1[0]-point2[0])**2)+((point1[1]-point2[1])**2)+((point1[2]-point2[2])**2)) 
-    return distance
+    --returns the distance between two provided coordinates in 3D cartesian space, remove requirement for sqrt in each call
+    -based on concept:
+        -d = root(dx^2 + dy^2 + dz^2)
+        -d^2 = dx^2 + dy^2 + dz^2
+        -if a = b then a^2 = b^2
+    -(essentially squaring both sides of the equation)
+    """
+    squareDistance = (point1[0]-point2[0])**2+((point1[1]-point2[1])**2)+((point1[2]-point2[2])**2) 
+    return squareDistance
 
 def findIntersectionPoint(bLineSet, origin, radius, tolerance = 30, draw = True):
     """
-    -(blineSet): provide set of points to compare
-    -(origin/radius): provide origin of a sphere as well as it's radius
-    -(tolerance): provide a minimum tolerance that your points must be within from the surface of the sphere
-    
-    This function checks the distance of all of the points of a set from the center of a sphere.
-    
-    The goal is to return the point, if there is one, within the set of points provided that intersects with 
-    the surface of a sphere
-        If the distance from the center is less than the radius, it is not on the surface
-        If the distance from the center is greater than the radius, it is not on the surface
-    
+        -(blineSet): provide set of points to compare
+        -(origin/radius): provide origin of a sphere as well as it's radius
+        -(tolerance): provide a minimum tolerance that your points must be within from the surface of the sphere
+        
+        This function checks the distance of all of the points of a set from the center of a sphere.
+        
+        The goal is to return the point, if there is one, within the set of points provided that intersects with 
+        the surface of a sphere
+            If the distance from the center is less than the radius, it is not on the surface
+            If the distance from the center is greater than the radius, it is not on the surface
+        Else, return the point that is closest to the surface of the sphere
+            Possible issue? Tells code that it is reaching a good value when it is actually outside of the possible positions
+            TODO: add constraints on logic such that if a position is outside of the possible positions for end effector, return error
+                -at least an error message
+                -maybe a try function?
+            TODO: maybe base evaluation on most recently known position of b. Could inrease speed when running in real time
+                
+                PseudoCode:
+
+                -is previous position different from current position?
+                -if yes
+                    -calculate angle of b for previous position
+                    -evaluate only the arc of angB +- pi/6 (or some distance calculated by velocity and time between refresh)
+                        -(feed in new parameters to drawCircle function for bMin and bMax)
+                    -return newly calculated position/angle for b
+                -if no
+                    -do nothing
+                    -check again after refresh              
     """
+    radius2 = radius**2
     threshold = radius/tolerance
-           
-    for point in bLineSet:
-        if (findDistance3D(point,origin)-radius)<threshold:
+    minDistDelta = 10**10
+
+    intersectionPoint=np.array([0,0,0])
+
+    for i in range(bLineSet.shape[0]):
+        point = bLineSet[i,:]
+
+        dist2 = findSquareDistance(point, origin)
+        dist2delta2 = abs(dist2-radius2)
+
+        if dist2delta2<threshold:
             intersectionPoint = point
             if draw:
                 drawSphere(intersectionPoint, 1, col='b')
             return intersectionPoint
-        else:
-            intersectionPoint = np.array([0,0,0])
+        elif dist2delta2<minDistDelta:
+            minDistDelta = dist2delta2
+            intersectionPoint = point
+
+    return intersectionPoint
 
 # position vector is the input position vector of the center of end effector
 # rotation is the rotation matrix for the orientation of the end effector (input in degrees)
+    #for delta configuration manipulator, rotation is always zero in all directions. This is not true for other configs
 # origin is constant. always (0,0,0)
 
-position = makeVect([5,10,25])
+position = makeVect([0,0,20])
 rotation = rotationMatrix([0,0,0])
 origin = makeVect([0,0,0])
 cLength = 25
@@ -163,13 +199,16 @@ drawVector(position, d1, 'g')
 drawVector(position, d2, 'g')
 drawVector(position, d3, 'g')
 
+arc1 = drawCircle(a1, bLength, 0, np.pi/4, 3*np.pi/4, draw = True)
+arc2 = drawCircle(a2, bLength, 2*np.pi/3,  np.pi/4, 3*np.pi/4, draw = True)
+arc3 = drawCircle(a3, bLength,  2*np.pi/-3, np.pi/4, 3*np.pi/4, draw = True)
 
 #draw vectors b 1-3, the vectors that 
-b1 = findIntersectionPoint(drawCircle(a1, bLength, 0, np.pi/4, 3*np.pi/4, draw = True), position+d1,cLength, tolerance = 300) - a1
+b1 = findIntersectionPoint(arc1, position+d1,cLength, tolerance = 300) - a1
 drawVector(a1, b1)
-b2 = findIntersectionPoint(drawCircle(a2, bLength, 2*np.pi/3,  np.pi/4, 3*np.pi/4, draw = True), position+d2, cLength, tolerance = 300)-a2
+b2 = findIntersectionPoint(arc2, position+d2, cLength, tolerance = 300)-a2
 drawVector(a2, b2)
-b3 = findIntersectionPoint(drawCircle(a3, bLength,  2*np.pi/-3, np.pi/4, 3*np.pi/4, draw = True), position+d3, cLength, tolerance = 300)-a3
+b3 = findIntersectionPoint(arc3, position+d3, cLength, tolerance = 300)-a3
 drawVector(a3, b3)
 
 drawVector(b1+a1, position+d1-a1-b1, col = 'r')
