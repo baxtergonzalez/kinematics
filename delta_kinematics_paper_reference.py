@@ -6,14 +6,10 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import *
 from numpy.core.shape_base import vstack
 from scipy.spatial.transform import Rotation as R
-
+import math
 
 
 '''
-
-
-
-
 
 position = makeVect([0,5,20])
 baseRots = [0, 2*np.pi/3, -2*np.pi/3]
@@ -149,6 +145,16 @@ def drawCircle(origin, radius, phi, bMin = 0, bMax = 2*np.pi, resolution = 50, d
     coords = np.array([x,y,z]).T
     return coords
 
+def justDrawArcs(origins, radius, phis, Mins, Maxs, resolution = 10):
+    for i in range(origins.shape[0]):
+        theta = np.linspace(Mins[i], Maxs[i], resolution)
+        # coords = np.zeros((len(theta),3))
+        x = np.array(radius*np.cos(theta)*np.cos(phis[i]) + origins[i,0])
+        y = np.array(radius*np.cos(theta)*np.sin(phis[i]) + origins[i,1])
+        z = np.array(radius*np.sin(theta) + origins[i,2])
+
+        ax.plot(x,y,z)
+
 def findSquareDistance(point1, point2):
     """
     --returns the distance between two provided coordinates in 3D cartesian space, remove requirement for sqrt in each call
@@ -215,12 +221,50 @@ def findIntersectionPoint(bLineSet, origin, radius, tolerance = 30, draw = True)
 
     return intersectionPoint
 
+def findThetas(aVecs, dVecs, position, baseRots, bLength, cLength):
+    thetas = np.empty((3))
+
+    for i in range(aVecs.shape[0]):
+
+        newRotation = rotationMatrix(np.array([0,0,-baseRots[i]]))
+
+        aVec = np.dot(newRotation, aVecs[i,:])
+        dVec = np.dot(newRotation, dVecs[i,:])
+        pVec = np.dot(newRotation, position)
+
+        deltaVec = dVec+pVec-aVec
+
+        t1 = cLength**2 - (np.dot(deltaVec, deltaVec) + bLength**2)
+        a = deltaVec[0]*deltaVec[0] + deltaVec[2]*deltaVec[2]
+        b = t1*deltaVec[0]
+        c = 0.25*t1**2 - deltaVec[2]*deltaVec[2]*bLength*bLength
+
+        bx = [-b + np.sqrt(b**2-4*a*c)]/(2*a)
+        thetas[i] =np.arccos(bx/bLength)
+    return thetas
+
+def paperAlgorithm(bLength, cLength, position, dVects, aVects):
+    thetas = np.empty(aVects.shape[0])
+    for i in range(aVects.shape[0]):
+        k = (aVects[i]-dVects[i])[0]
+
+        Ei = 2*bLength*(position[1] + k)
+        Fi = 2 * position[2]*bLength
+        Gi = position[0]**2 + position[1]**2 + position[2]**2 + k**2 + bLength**2 + 2*position[1]*k - cLength**2
+
+        ti = (-Fi + np.sqrt(Ei**2 + Fi**2 - Gi**2))/Gi-Ei
+
+        thetas[i]=180-np.degrees(2*np.arccos(ti))
+
+    return thetas
+
+
 # position vector is the input position vector of the center of end effector
 # rotation is the rotation matrix for the orientation of the end effector (input in degrees)
     #for delta configuration manipulator, rotation is always zero in all directions. This is not true for other configs
 # origin is constant. always (0,0,0)
 
-position = makeVect([0,0,20])
+position = makeVect([0,0,30])
 rotation = rotationMatrix([0,0,0])
 origin = makeVect([0,0,0])
 cLength = 25
@@ -238,9 +282,9 @@ a3 = aLinks[2]
 
 dLength = 5
 dLinks = makeLinkage(dLength, np.array([0,360/3,-360/3]))
-d1 = np.dot(dLinks[0], rotation)
-d2 = np.dot(dLinks[1], rotation)
-d3 = np.dot(dLinks[2], rotation)
+d1 = np.dot(rotation, dLinks[0])
+d2 = np.dot(rotation, dLinks[1])
+d3 = np.dot(rotation, dLinks[2])
 
 # draw static design vectors a 1-3 and d 1-3
 drawVects(np.full((3,3),origin),np.array([a1, a2, a3]) )
@@ -252,12 +296,29 @@ arc2 = drawCircle(a2, bLength, 2*np.pi/3,  np.pi/4, 3*np.pi/4, draw = True)
 arc3 = drawCircle(a3, bLength,  2*np.pi/-3, np.pi/4, 3*np.pi/4, draw = True)
 
 #draw vectors b 1-3, the vectors that 
-b1 = findIntersectionPoint(arc1, position+d1,cLength, tolerance = 300) - a1
+b1 = findIntersectionPoint(arc1, position+d1, cLength, tolerance = 300)-a1
 b2 = findIntersectionPoint(arc2, position+d2, cLength, tolerance = 300)-a2
 b3 = findIntersectionPoint(arc3, position+d3, cLength, tolerance = 300)-a3
+bthetas = findThetas(aLinks, dLinks, position,  np.array([0, (360/3)*1, (360/3)*-1 ]), bLength, cLength )
+print(bthetas)
+
+print("geometric difference in cLength 1: " + str(np.sqrt(findSquareDistance(d1+position,a1+b1))-cLength))
+print("geometric difference in cLength 2: " + str(np.sqrt(findSquareDistance(d2+position,a2+b2))-cLength))
+print("geometric difference in cLength 3: " + str(np.sqrt(findSquareDistance(d3+position,a3+b3))-cLength))
+
 drawVects(np.array([a1,a2,a3]),np.array([b1,b2,b3]))
 
+drawCircle(a1, bLength/2, 0 , bMin=0, bMax=bthetas[0], draw = True)
+drawCircle(a2, bLength/2, 2*np.pi/3 , bMin=0, bMax=bthetas[1], draw = True)
+drawCircle(a3, bLength/2, -2*np.pi/3, bMin=0, bMax=bthetas[2], draw = True)
+#justDrawArcs(aLinks, bLength, np.array([0, (360/3)*1, (360/3)*-1 ]), np.array([0,0,0]), bthetas)
+
 drawVects(np.array([b1+a1,b2+a2,b3+a3]),np.array([position+d1-a1-b1, position+d2-a2-b2,position+d3-a3-b3]), cols = 'r')
+myRotations = [0, -np.pi*2.0/3, np.pi*2.0/3]
+btesttemp = bLength* np.array([np.cos(bthetas[2]), 0, np.sin(bthetas[2])])
+myRotation = rotationMatrix([0,0,240])
+btest = np.dot(myRotation, btesttemp)
+print("analytical diffence in cLength: " +  str(np.sqrt(findSquareDistance(d3+position, a3+btest))-cLength))
 
 # display plot
 # !!ALWAYS AT END OF SCRIPT!!
