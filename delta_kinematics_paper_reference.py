@@ -8,40 +8,6 @@ from numpy.core.shape_base import vstack
 from scipy.spatial.transform import Rotation as R
 import math
 
-
-'''
-
-position = makeVect([0,5,20])
-baseRots = [0, 2*np.pi/3, -2*np.pi/3]
-
-aVecs = np.array((3,3))
-dVecs = np.array((3,3))
-for i in range(3):
-    aVecs[i,:] = makeVect(...)
-    dVecs[i,:] = makeVect(...)
-bLength, cLength = ...
-
-
-def findThetas(aVecs, dVecs, position, baseRots):
-    thetas = np.array(aVecs.shape[0])
-    for i in range(aVecs.shape[0]):
-        aVec = rotate(aVecs[i,:], -baseRots[i])
-        dVec = rotate(dVecs[i,:], -baseRots[i])
-        pVec = rotate(position, -baseRots[i])
-        deltaVec = dVecs+pVec-aVecs
-        r2 = np.dot(deltaVec, deltaVec) - cLength**2
-        a = deltaVec[0]*deltaVec[0] + deltaVec[2]*deltaVec[2]
-        b = -r2*deltaVec[0]
-        c = 0.25*r2 - deltaVec[2]*deltaVec[2]*bLength*bLength
-        bx = [-b+sqrt(b**2-a*c)]/(2*a)
-        thetas[i] = acos(bx/bLength)
-    return thetas
-
-
-
-
-'''
-
 #setup for the plotting functions
 
 fig = plt.figure()
@@ -105,9 +71,11 @@ def drawVector(start, end, col='b'):
     '''
     ax.quiver(start[0], start[1], start[2], end[0], end[1], end[2], color=col)
 
-def drawVects(starts, ends, cols = 'b'):
+def drawVects(starts, ends, colors=None, cols = 'b'):
+    if colors is None:
+        colors = np.full((starts.shape[0],), cols)
     for i in range(starts.shape[0]):
-        ax.quiver(starts[i,0], starts[i, 1], starts[i, 2], ends[i, 0], ends[i, 1], ends[i, 2], color=cols)
+        ax.quiver(starts[i,0], starts[i, 1], starts[i, 2], ends[i, 0], ends[i, 1], ends[i, 2], color=colors[i])
     
 def drawSphere(origin, radius, draw = False, col = 'r'):
     """
@@ -146,6 +114,14 @@ def drawCircle(origin, radius, phi, bMin = 0, bMax = 2*np.pi, resolution = 50, d
     return coords
 
 def justDrawArcs(origins, radius, phis, Mins, Maxs, resolution = 10):
+    '''
+    draw multiple arcs
+    -uses same syntax and math as drawCircle function, just as arrays
+    -Mins: draws angle from Mins...
+    -Maxs: to Maxs
+
+    -Currently only being used for drawing angles for b
+    '''
     for i in range(origins.shape[0]):
         theta = np.linspace(Mins[i], Maxs[i], resolution)
         # coords = np.zeros((len(theta),3))
@@ -222,6 +198,15 @@ def findIntersectionPoint(bLineSet, origin, radius, tolerance = 30, draw = True)
     return intersectionPoint
 
 def findThetas(aVecs, dVecs, position, baseRots, bLength, cLength):
+    '''
+    Dan's Code:
+        -takes in design parameters
+        -takes in input position
+        -analytically calculates the angle of the b linkage
+            -can input directly to servo motors
+        NOTE: only works for delta config. of manipulator, not future versions
+    '''
+    
     thetas = np.empty((3))
 
     for i in range(aVecs.shape[0]):
@@ -244,6 +229,11 @@ def findThetas(aVecs, dVecs, position, baseRots, bLength, cLength):
     return thetas
 
 def paperAlgorithm(bLength, cLength, position, dVects, aVects):
+    
+    '''
+        NOT WORKING
+        -attempt at recreating the algorithm directly from the academic paper
+    '''
     thetas = np.empty(aVects.shape[0])
     for i in range(aVects.shape[0]):
         k = (aVects[i]-dVects[i])[0]
@@ -258,6 +248,32 @@ def paperAlgorithm(bLength, cLength, position, dVects, aVects):
 
     return thetas
 
+def validatePosition(position, myRots, aVecs, dVecs, bLength, bthetas, cLength, threshold = 1):
+    """
+    function to check if a calculated set of thetas for a given position is valid (I.E positions inside of the work area of the machine)
+    -checks if the calculated length of the c link matches the design length of c for each leg
+    -if the check passes, the leg is drawn in green
+    -if it fails, the leg is drawn in red
+    """
+       
+    colors = np.full(bthetas.shape,'g')
+    
+    for i in range(aVecs.shape[0]):
+        btesttemp = bLength* np.array([np.cos(bthetas[i]), 0, np.sin(bthetas[i])])
+        myRotation = rotationMatrix(np.array([0,0,np.degrees(myRots[i])]))
+        btest = np.dot(myRotation, btesttemp)
+        diff = abs(np.sqrt(findSquareDistance(dVecs[i]+position, aVecs[i]+btest))-cLength)
+
+        print(diff)
+
+        if diff < threshold:
+            colors[i] = 'g'
+            print("analytical diffence in cLength: " +  str(diff))
+        else:
+            colors[i] = 'r'
+            print(bthetas[i])
+            print("Invalid input position")
+    return colors
 
 # position vector is the input position vector of the center of end effector
 # rotation is the rotation matrix for the orientation of the end effector (input in degrees)
@@ -288,37 +304,41 @@ d3 = np.dot(rotation, dLinks[2])
 
 # draw static design vectors a 1-3 and d 1-3
 drawVects(np.full((3,3),origin),np.array([a1, a2, a3]) )
-
 drawVects(np.full((3,3),position), np.array([d1,d2,d3]), cols = 'g')
 
+#draw the arcs representing all possible positions and angles of the b links
 arc1 = drawCircle(a1, bLength, 0, np.pi/4, 3*np.pi/4, draw = True)
 arc2 = drawCircle(a2, bLength, 2*np.pi/3,  np.pi/4, 3*np.pi/4, draw = True)
 arc3 = drawCircle(a3, bLength,  2*np.pi/-3, np.pi/4, 3*np.pi/4, draw = True)
 
-#draw vectors b 1-3, the vectors that 
+#determine/calculate vectors and angles for linkages b 1-3 
 b1 = findIntersectionPoint(arc1, position+d1, cLength, tolerance = 300)-a1
 b2 = findIntersectionPoint(arc2, position+d2, cLength, tolerance = 300)-a2
 b3 = findIntersectionPoint(arc3, position+d3, cLength, tolerance = 300)-a3
+#bthetas is calculated using the analytic solution from dan's code
 bthetas = findThetas(aLinks, dLinks, position,  np.array([0, (360/3)*1, (360/3)*-1 ]), bLength, cLength )
-print(bthetas)
+
+'''
+    RENDER AND DRAW
+    -prints the b angles (determined analytically)
+    -draws the returned angles for b
+    -draws out the position of c and b
+    -visually represents if the input position for each leg is valid and shows which, if any, are valid
+'''
+print(np.degrees(bthetas))
 
 print("geometric difference in cLength 1: " + str(np.sqrt(findSquareDistance(d1+position,a1+b1))-cLength))
 print("geometric difference in cLength 2: " + str(np.sqrt(findSquareDistance(d2+position,a2+b2))-cLength))
 print("geometric difference in cLength 3: " + str(np.sqrt(findSquareDistance(d3+position,a3+b3))-cLength))
 
-drawVects(np.array([a1,a2,a3]),np.array([b1,b2,b3]))
+linkColor = validatePosition(position, np.array([0, np.pi*2.0/3, -np.pi*2.0/3]), aLinks, dLinks, bLength, bthetas, cLength)
+
+drawVects(np.array([a1,a2,a3]),np.array([b1,b2,b3]), colors=linkColor)
+drawVects(np.array([b1+a1,b2+a2,b3+a3]),np.array([position+d1-a1-b1, position+d2-a2-b2,position+d3-a3-b3]), colors = linkColor)
 
 drawCircle(a1, bLength/2, 0 , bMin=0, bMax=bthetas[0], draw = True)
 drawCircle(a2, bLength/2, 2*np.pi/3 , bMin=0, bMax=bthetas[1], draw = True)
 drawCircle(a3, bLength/2, -2*np.pi/3, bMin=0, bMax=bthetas[2], draw = True)
-#justDrawArcs(aLinks, bLength, np.array([0, (360/3)*1, (360/3)*-1 ]), np.array([0,0,0]), bthetas)
-
-drawVects(np.array([b1+a1,b2+a2,b3+a3]),np.array([position+d1-a1-b1, position+d2-a2-b2,position+d3-a3-b3]), cols = 'r')
-myRotations = [0, -np.pi*2.0/3, np.pi*2.0/3]
-btesttemp = bLength* np.array([np.cos(bthetas[2]), 0, np.sin(bthetas[2])])
-myRotation = rotationMatrix([0,0,240])
-btest = np.dot(myRotation, btesttemp)
-print("analytical diffence in cLength: " +  str(np.sqrt(findSquareDistance(d3+position, a3+btest))-cLength))
 
 # display plot
 # !!ALWAYS AT END OF SCRIPT!!
